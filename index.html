@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Visor de Recorridos Metropolitanos</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    #map { height: 100%; width: 100%; }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
+</head>
+<body class="bg-slate-100 h-screen flex flex-col font-sans overflow-hidden">
+
+  <!-- Encabezado -->
+  <header class="bg-slate-800 text-white px-6 py-3 flex justify-between items-center shadow-md z-10 shrink-0">
+    <div class="flex items-center gap-3">
+      <svg class="w-7 h-7 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path>
+      </svg>
+      <div>
+        <h1 class="font-bold text-lg leading-tight">Visor de Recorridos Metropolitanos</h1>
+        <p class="text-xs text-slate-400" id="sub-header">Cargando recorridos automáticos...</p>
+      </div>
+    </div>
+    
+    <div class="flex items-center gap-3">
+      <label class="cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-2 rounded-md shadow transition flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+        </svg>
+        <span>Cargar otro .json</span>
+        <input type="file" id="file-input" accept=".json,.geojson" class="hidden">
+      </label>
+    </div>
+  </header>
+
+  <!-- Contenedor Principal -->
+  <div class="flex flex-1 overflow-hidden relative">
+    
+    <!-- Panel Lateral de Filtros y Lista -->
+    <aside class="w-96 bg-white shadow-xl z-20 flex flex-col h-full border-r border-slate-200 shrink-0">
+      
+      <!-- Zona Drag & Drop -->
+      <div id="drop-zone" class="p-3 m-3 border-2 border-dashed border-slate-300 rounded-lg text-center hover:border-emerald-500 hover:bg-emerald-50 transition cursor-pointer text-xs text-slate-500">
+        Arrastra un nuevo archivo GeoJSON aquí o usa el botón superior.
+      </div>
+
+      <!-- Filtros -->
+      <div class="px-4 py-2 space-y-3 bg-slate-50 border-b border-slate-200">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold uppercase text-slate-500">Filtros de Búsqueda</span>
+          <button id="btn-reset" class="text-xs text-indigo-600 hover:text-indigo-800 hidden font-medium">Limpiar filtros</button>
+        </div>
+
+        <!-- Búsqueda General -->
+        <div class="relative">
+          <input type="text" id="search-input" placeholder="Buscar por origen, destino, observaciones..." 
+                 class="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500">
+          <svg class="w-4 h-4 text-slate-400 absolute left-2.5 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+          </svg>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <!-- Empresa -->
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Empresa</label>
+            <select id="filter-empresa" class="w-full py-1 px-2 text-xs bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500">
+              <option value="">Todas</option>
+            </select>
+          </div>
+
+          <!-- Línea / Caract -->
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Línea / Caract</label>
+            <select id="filter-linea" class="w-full py-1 px-2 text-xs bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500">
+              <option value="">Todas</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Sentido -->
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-600 mb-1">Sentido</label>
+          <select id="filter-sentido" class="w-full py-1 px-2 text-xs bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500">
+            <option value="">Todos</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Resumen de Resultados -->
+      <div class="px-4 py-2 bg-slate-100 border-b border-slate-200 text-xs font-medium text-slate-600 flex justify-between">
+        <span>Resultados visibles:</span>
+        <span id="results-count" class="font-bold text-slate-800">0</span>
+      </div>
+
+      <!-- Lista de Recorridos -->
+      <div id="route-list" class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2 bg-slate-50">
+        <p class="text-xs text-center text-slate-400 py-6">Cargando datos...</p>
+      </div>
+    </aside>
+
+    <!-- Mapa -->
+    <main class="flex-1 relative">
+      <div id="map"></div>
+    </main>
+
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
+  <script>
+    // Variables de Estado
+    let geojsonData = null;
+    let geojsonLayer = null;
+    let map = null;
+    let selectedFeatureId = null;
+
+    // Paleta cromática para asignar automáticamente por empresa
+    const companyColors = {};
+    const colorPalette = [
+      '#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', 
+      '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#6366f1'
+    ];
+
+    // Inicializar Mapa
+    function initMap() {
+      // Mapas Base
+      const osmStandard = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap contributors'
+      });
+
+      const osmHOT = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap contributors, Tiles style by Humanitarian OpenStreetMap Team'
+      });
+
+      const esriSat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 18,
+        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+      });
+
+      map = L.map('map', {
+        center: [-34.75, -56.05], // Centro Montevideo y Área Metropolitana
+        zoom: 11,
+        layers: [osmStandard]
+      });
+
+      // Control de capas
+      const baseMaps = {
+        "OpenStreetMap Standard": osmStandard,
+        "OpenStreetMap Humanitario": osmHOT,
+        "Satélite (Esri)": esriSat
+      };
+      L.control.layers(baseMaps).addTo(map);
+
+      // Intentar cargar archivos automáticos al iniciar
+      tryAutoLoadDefaultFiles();
+    }
+
+    // Intentar auto-carga desde nombres comunes en el servidor local
+    async function tryAutoLoadDefaultFiles() {
+      const candidates = ['recorridos_metropolitanos.json', 'recorridos.json'];
+      let loaded = false;
+
+      for (const fileName of candidates) {
+        try {
+          const response = await fetch(fileName);
+          if (response.ok) {
+            const data = await response.json();
+            loadGeoJSONData(data, fileName);
+            loaded = true;
+            break;
+          }
+        } catch (e) {
+          // Ignorar y probar el siguiente
+        }
+      }
+
+      if (!loaded) {
+        document.getElementById('sub-header').innerText = "Listo. Selecciona o arrastra un archivo .json";
+        document.getElementById('route-list').innerHTML = `
+          <div class="text-center text-slate-500 text-xs py-8 px-4">
+            <p class="font-semibold text-slate-700 mb-1">No se encontró el archivo automático</p>
+            <p>Por favor, usa el botón <b>"Cargar otro .json"</b> o arrastra tu archivo sobre el recuadro superior.</p>
+          </div>
+        `;
+      }
+    }
+
+    // Cargar y procesar el GeoJSON
+    function loadGeoJSONData(data, sourceName = "Archivo GeoJSON") {
+      geojsonData = data;
+      document.getElementById('sub-header').innerText = `${sourceName} (${data.features.length} recorridos)`;
+
+      // Asignar colores por empresa
+      let colorIdx = 0;
+      data.features.forEach(f => {
+        const emp = f.properties.Empresa || 'OTRO';
+        if (!companyColors[emp]) {
+          companyColors[emp] = colorPalette[colorIdx % colorPalette.length];
+          colorIdx++;
+        }
+      });
+
+      // Poblar dropdowns de filtros
+      populateFilters();
+
+      // Renderizar capa y lista
+      renderData();
+    }
+
+    // Obtener color para una característica
+    function getFeatureColor(feature) {
+      const emp = feature.properties.Empresa || 'OTRO';
+      return companyColors[emp] || '#64748b';
+    }
+
+    // Poblar selects de filtro
+    function populateFilters() {
+      const empresas = new Set();
+      const lineas = new Set();
+      const sentidos = new Set();
+
+      geojsonData.features.forEach(f => {
+        const p = f.properties;
+        if (p.Empresa) empresas.add(p.Empresa);
+        if (p.Caract) lineas.add(p.Caract);
+        if (p.Sentido) sentidos.add(p.Sentido);
+      });
+
+      populateSelect('filter-empresa', Array.from(empresas).sort());
+      populateSelect('filter-linea', Array.from(lineas).sort());
+      populateSelect('filter-sentido', Array.from(sentidos).sort());
+    }
+
+    function populateSelect(id, values) {
+      const select = document.getElementById(id);
+      select.innerHTML = '<option value="">Todas</option>';
+      values.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        select.appendChild(opt);
+      });
+    }
+
+    // Renderizar Mapa y Lista aplicando Filtros
+    function renderData() {
+      if (!geojsonData) return;
+
+      const filterEmpresa = document.getElementById('filter-empresa').value;
+      const filterLinea = document.getElementById('filter-linea').value;
+      const filterSentido = document.getElementById('filter-sentido').value;
+      const searchText = document.getElementById('search-input').value.toLowerCase();
+
+      // Mostrar/Ocultar botón de reset
+      const hasFilter = filterEmpresa || filterLinea || filterSentido || searchText;
+      document.getElementById('btn-reset').classList.toggle('hidden', !hasFilter);
+
+      // Eliminar capa anterior
+      if (geojsonLayer) {
+        map.removeLayer(geojsonLayer);
+      }
+
+      // Filtrar características
+      const filteredFeatures = geojsonData.features.filter(f => {
+        const p = f.properties;
+        if (filterEmpresa && p.Empresa !== filterEmpresa) return false;
+        if (filterLinea && String(p.Caract) !== filterLinea) return false;
+        if (filterSentido && p.Sentido !== filterSentido) return false;
+
+        if (searchText) {
+          const textToSearch = `${p.Name || ''} ${p.Origen || ''} ${p.Destino || ''} ${p.Observacio || ''} ${p.Recorrido || ''}`.toLowerCase();
+          if (!textToSearch.includes(searchText)) return false;
+        }
+
+        return true;
+      });
+
+      // Actualizar contador
+      document.getElementById('results-count').innerText = filteredFeatures.length;
+
+      // Crear capa GeoJSON
+      geojsonLayer = L.geoJSON({ type: "FeatureCollection", features: filteredFeatures }, {
+        style: function(feature) {
+          return {
+            color: getFeatureColor(feature),
+            weight: 4,
+            opacity: 0.8
+          };
+        },
+        onEachFeature: function(feature, layer) {
+          const p = feature.properties;
+          
+          // Crear Popup
+          const popupContent = `
+            <div class="text-xs leading-relaxed font-sans min-w-[200px]">
+              <div class="font-bold text-sm text-slate-800 border-b pb-1 mb-2 border-slate-200">
+                ${p.Empresa || 'Sin Empresa'} - Línea ${p.Caract || 'N/A'}
+              </div>
+              <div><b>Origen:</b> ${p.Origen || 'N/A'}</div>
+              <div><b>Destino:</b> ${p.Destino || 'N/A'}</div>
+              <div><b>Sentido:</b> ${p.Sentido || 'N/A'}</div>
+              ${p.Dist ? `<div><b>Distancia:</b> ${p.Dist} km</div>` : ''}
+              ${p.Observacio ? `<div class="mt-2 text-slate-600 bg-slate-50 p-1.5 rounded border border-slate-200">${p.Observacio}</div>` : ''}
+            </div>
+          `;
+          layer.bindPopup(popupContent);
+
+          // Evento Click
+          layer.on('click', function() {
+            highlightCard(feature);
+          });
+        }
+      }).addTo(map);
+
+      // Ajustar vista del mapa a los elementos filtrados
+      if (filteredFeatures.length > 0 && geojsonLayer.getBounds().isValid()) {
+        map.fitBounds(geojsonLayer.getBounds(), { padding: [30, 30] });
+      }
+
+      // Renderizar Lista Lateral
+      renderList(filteredFeatures);
+    }
+
+    // Renderizar tarjetas en la lista lateral
+    function renderList(features) {
+      const container = document.getElementById('route-list');
+      container.innerHTML = '';
+
+      if (features.length === 0) {
+        container.innerHTML = '<div class="text-xs text-center text-slate-400 py-8">No se encontraron recorridos con los filtros actuales.</div>';
+        return;
+      }
+
+      features.forEach((f, idx) => {
+        const p = f.properties;
+        const color = getFeatureColor(f);
+
+        const card = document.createElement('div');
+        card.id = `card-${idx}`;
+        card.className = "bg-white p-3 rounded-md border border-slate-200 hover:border-slate-400 cursor-pointer shadow-sm transition flex flex-col gap-1 text-xs relative overflow-hidden";
+        
+        card.innerHTML = `
+          <div class="absolute left-0 top-0 bottom-0 w-1.5" style="background-color: ${color}"></div>
+          <div class="pl-2 flex justify-between items-start">
+            <span class="font-bold text-slate-800">${p.Empresa || 'Empresa'}</span>
+            <span class="bg-slate-100 text-slate-700 font-semibold px-1.5 py-0.5 rounded text-[10px] border border-slate-200">
+              Línea ${p.Caract || '-'}
+            </span>
+          </div>
+          <div class="pl-2 text-slate-600 font-medium">
+            ${p.Origen || 'Origen'} ➔ ${p.Destino || 'Destino'}
+          </div>
+          ${p.Observacio ? `<div class="pl-2 text-[11px] text-slate-400 truncate">${p.Observacio}</div>` : ''}
+        `;
+
+        card.addEventListener('click', () => {
+          // Centrar mapa en esta característica
+          const layer = geojsonLayer.getLayers()[idx];
+          if (layer) {
+            map.fitBounds(layer.getBounds(), { maxZoom: 14, padding: [50, 50] });
+            layer.openPopup();
+          }
+        });
+
+        container.appendChild(card);
+      });
+    }
+
+    function highlightCard(feature) {
+      // Implementación simple opcional para resaltar en lista
+    }
+
+    // Manejo de eventos de Input / Filtros
+    document.getElementById('filter-empresa').addEventListener('change', renderData);
+    document.getElementById('filter-linea').addEventListener('change', renderData);
+    document.getElementById('filter-sentido').addEventListener('change', renderData);
+    document.getElementById('search-input').addEventListener('input', renderData);
+
+    document.getElementById('btn-reset').addEventListener('click', () => {
+      document.getElementById('filter-empresa').value = '';
+      document.getElementById('filter-linea').value = '';
+      document.getElementById('filter-sentido').value = '';
+      document.getElementById('search-input').value = '';
+      renderData();
+    });
+
+    // Carga manual de archivos por Input
+    document.getElementById('file-input').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (file) readFile(file);
+    });
+
+    // Drag & Drop
+    const dropZone = document.getElementById('drop-zone');
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('border-emerald-500', 'bg-emerald-50');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('border-emerald-500', 'bg-emerald-50');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('border-emerald-500', 'bg-emerald-50');
+      const file = e.dataTransfer.files[0];
+      if (file) readFile(file);
+    });
+
+    function readFile(file) {
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        try {
+          const data = JSON.parse(evt.target.result);
+          loadGeoJSONData(data, file.name);
+        } catch (err) {
+          alert('Error al leer el archivo JSON: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    // Iniciar Aplicación
+    window.onload = initMap;
+  </script>
+</body>
+</html>
